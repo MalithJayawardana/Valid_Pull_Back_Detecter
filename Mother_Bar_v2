@@ -1,0 +1,148 @@
+//+------------------------------------------------------------------+
+//|                                     SMC_Valid_Pullback_Pro.mq5   |
+//|                       Strict SMC Valid Pullback Identifier       |
+//+------------------------------------------------------------------+
+#property indicator_chart_window
+#property indicator_buffers 2
+#property indicator_plots   2
+
+//--- Plot 1: Bullish Valid Pullback (Price broke the LOW of the Highest Candle)
+#property indicator_label1  "Bullish Pullback"
+#property indicator_type1   DRAW_ARROW
+#property indicator_color1  clrDodgerBlue
+#property indicator_width1  2
+
+//--- Plot 2: Bearish Valid Pullback (Price broke the HIGH of the Lowest Candle)
+#property indicator_label2  "Bearish Pullback"
+#property indicator_type2   DRAW_ARROW
+#property indicator_color2  clrRed
+#property indicator_width2  2
+
+//--- Indicator Buffers
+double BullishPB_Buffer[];
+double BearishPB_Buffer[];
+
+//--- State Variables (Trend Tracking)
+double currentHighestHigh = 0.0;
+double lowOfHighestHigh = 0.0;
+bool   waitingForBullishPB = false;
+
+double currentLowestLow = 999999.0;
+double highOfLowestLow = 999999.0;
+bool   waitingForBearishPB = false;
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   //--- Set buffers
+   SetIndexBuffer(0, BullishPB_Buffer, INDICATOR_DATA);
+   SetIndexBuffer(1, BearishPB_Buffer, INDICATOR_DATA);
+
+   //--- Set Arrow Styles (233 = Up Arrow, 234 = Down Arrow)
+   PlotIndexSetInteger(0, PLOT_ARROW, 233);
+   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, 0.0);
+   
+   PlotIndexSetInteger(1, PLOT_ARROW, 234);
+   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, 0.0);
+
+   return(INIT_SUCCEEDED);
+  }
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double   &open[],
+                const double   &high[],
+                const double   &low[],
+                const double   &close[],
+                const long     &tick_volume[],
+                const long     &volume[],
+                const int      &spread[])
+  {
+   
+   if(rates_total < 5) return(0);
+
+   int limit;
+
+  
+   if(prev_calculated == 0)
+     {
+      limit = 1;
+      currentHighestHigh = high[0];
+      lowOfHighestHigh = low[0];
+      
+      currentLowestLow = low[0];
+      highOfLowestLow = high[0];
+     }
+   else
+     {
+      
+      limit = prev_calculated - 2;
+      if(limit < 1) limit = 1;
+     }
+
+   
+   for(int i = limit; i < rates_total; i++)
+     {
+      // Buffers සුද්ද කිරීම
+      BullishPB_Buffer[i] = 0.0;
+      BearishPB_Buffer[i] = 0.0;
+
+      //======================================================================
+      // 1. BULLISH PULLBACK LOGIC (Upward Moves)
+      //======================================================================
+     
+      if(high[i] > currentHighestHigh)
+        {
+         currentHighestHigh = high[i];
+         lowOfHighestHigh = low[i]; // ඒ High එක හදපු කැන්ඩල් එකේ Low එක
+         waitingForBullishPB = true;
+        }
+
+      
+      if(waitingForBullishPB && low[i] < lowOfHighestHigh)
+        {
+         // Valid Bullish Pullback සම්පූර්ණයි!
+         BullishPB_Buffer[i] = low[i] - (10 * _Point); // ඊතලය පහළින් අඳින්න
+         waitingForBullishPB = false; // ඊළඟ අලුත් High එක හැදෙනකම් ආයෙ පෙන්නන්නේ නෑ
+         
+        
+         currentLowestLow = low[i];
+         highOfLowestLow = high[i];
+         waitingForBearishPB = true;
+        }
+
+
+      //======================================================================
+      // 2. BEARISH PULLBACK LOGIC (Downward Moves)
+      //======================================================================
+    
+      if(low[i] < currentLowestLow)
+        {
+         currentLowestLow = low[i];
+         highOfLowestLow = high[i]; 
+         waitingForBearishPB = true;
+        }
+
+      
+      if(waitingForBearishPB && high[i] > highOfLowestLow)
+        {
+         // Valid Bearish Pullback සම්පූර්ණයි!
+         BearishPB_Buffer[i] = high[i] + (10 * _Point); // ඊතලය ඉහළින් අඳින්න
+         waitingForBearishPB = false; // ඊළඟ අලුත් Low එක හැදෙනකම් ආයෙ පෙන්නන්නේ නෑ
+         
+         
+         currentHighestHigh = high[i];
+         lowOfHighestHigh = low[i];
+         waitingForBullishPB = true;
+        }
+     }
+
+   return(rates_total);
+  }
+//+------------------------------------------------------------------+

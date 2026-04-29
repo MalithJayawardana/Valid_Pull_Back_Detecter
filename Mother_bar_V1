@@ -1,0 +1,103 @@
+//+------------------------------------------------------------------+
+//|                                              MotherBarFinder.mq5 |
+//|                                                SMC Base Logic    |
+//+------------------------------------------------------------------+
+#property indicator_chart_window
+#property indicator_buffers 2
+#property indicator_plots   2
+
+//--- plot MotherHigh 
+#property indicator_label1  "Mother High"
+#property indicator_type1   DRAW_ARROW
+#property indicator_color1  clrDodgerBlue
+#property indicator_width1  2
+
+//--- plot MotherLow 
+#property indicator_label2  "Mother Low"
+#property indicator_type2   DRAW_ARROW
+#property indicator_color2  clrMagenta
+#property indicator_width2  2
+
+//--- indicator buffers
+double         MotherHighBuffer[];
+double         MotherLowBuffer[];
+
+//--- State Variables 
+double lastValidHigh = 0.0;
+double lastValidLow = 0.0;
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   //--- Buffers
+   SetIndexBuffer(0, MotherHighBuffer, INDICATOR_DATA);
+   SetIndexBuffer(1, MotherLowBuffer, INDICATOR_DATA);
+   
+   //--- Arrow Code  (Dot)
+   PlotIndexSetInteger(0, PLOT_ARROW, 159);
+   PlotIndexSetInteger(1, PLOT_ARROW, 159);
+   
+   //--- 0.0
+   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, 0.0);
+   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, 0.0);
+
+   return(INIT_SUCCEEDED);
+  }
+  
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double &open[],
+                const double &high[],
+                const double &low[],
+                const double &close[],
+                const long &tick_volume[],
+                const long &volume[],
+                const int &spread[])
+  {
+  ෑ
+   if(rates_total < 2) return(0);
+
+  
+   int limit = prev_calculated == 0 ? 0 : prev_calculated - 1;
+
+   for(int i = limit; i < rates_total; i++)
+     {
+     
+      if(lastValidHigh == 0.0 || lastValidLow == 0.0)
+        {
+         lastValidHigh = high[i];
+         lastValidLow = low[i];
+         
+         MotherHighBuffer[i] = high[i];
+         MotherLowBuffer[i] = low[i];
+         continue;
+        }
+
+      // Inside Bar එකක්ද කියලා check කරනවා
+      if(high[i] <= lastValidHigh && low[i] >= lastValidLow)
+        {
+         
+         MotherHighBuffer[i] = 0.0;
+         MotherLowBuffer[i] = 0.0;
+        }
+      else
+        {
+         
+         lastValidHigh = high[i];
+         lastValidLow = low[i];
+         
+        
+         MotherHighBuffer[i] = high[i] + (20 * _Point); 
+         MotherLowBuffer[i] = low[i] - (20 * _Point);  
+        }
+     }
+
+   return(rates_total);
+  }
+//+------------------------------------------------------------------+

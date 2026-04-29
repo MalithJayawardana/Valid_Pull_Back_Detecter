@@ -1,0 +1,200 @@
+//+------------------------------------------------------------------+
+//|                                     SMC_Valid_Pullback_Pro.mq5   |
+//+------------------------------------------------------------------+
+#property indicator_chart_window
+#property indicator_buffers 2
+#property indicator_plots   2
+
+#property indicator_label1  "Bullish Pullback"
+#property indicator_type1   DRAW_ARROW
+#property indicator_color1  clrDodgerBlue
+#property indicator_width1  2
+
+#property indicator_label2  "Bearish Pullback"
+#property indicator_type2   DRAW_ARROW
+#property indicator_color2  clrRed
+#property indicator_width2  2
+
+double BullishPB_Buffer[];
+double BearishPB_Buffer[];
+
+//--- Input Parameters
+input color BullLineColor  = clrDodgerBlue;  // Bullish Line Color
+input color BearLineColor  = clrRed;         // Bearish Line Color
+input int   LineWidth       = 1;             // Line Width
+input int   LineLength      = 5;             // Line Length (candles)
+input bool  ShowLines       = true;          // Show Lines
+
+//--- Line counter (unique name සඳහා)
+int lineCount = 0;
+
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   SetIndexBuffer(0, BullishPB_Buffer, INDICATOR_DATA);
+   SetIndexBuffer(1, BearishPB_Buffer, INDICATOR_DATA);
+
+   PlotIndexSetInteger(0, PLOT_ARROW, 233);
+   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, 0.0);
+
+   PlotIndexSetInteger(1, PLOT_ARROW, 234);
+   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, 0.0);
+
+   // පරණ lines සුද්ද කිරීම
+   ObjectsDeleteAll(0, "SMC_PB_Line_");
+
+   return(INIT_SUCCEEDED);
+  }
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   // Indicator remove වෙලාවේ lines සුද්ද කරනවා
+   ObjectsDeleteAll(0, "SMC_PB_Line_");
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+// Pullback Line අඳින Function එක
+//+------------------------------------------------------------------+
+void DrawPullbackLine(const datetime &time[],
+                      const double   &high[],
+                      const double   &low[],
+                      int             candleIndex,
+                      int             rates_total,
+                      bool            isBullish)
+  {
+   if(!ShowLines) return;
+
+   // Unique name
+   string lineName = "SMC_PB_Line_" + IntegerToString(lineCount++);
+
+   // Line start = pullback candle
+   // Line end   = LineLength candles ඉදිරියට
+   int endIndex = candleIndex + LineLength;
+   if(endIndex >= rates_total) endIndex = rates_total - 1;
+
+   datetime timeStart = time[candleIndex];
+   datetime timeEnd   = time[endIndex];
+
+   // Line price = pullback candle එකේ Low (Bull) හෝ High (Bear)
+   double linePrice = isBullish ? low[candleIndex] : high[candleIndex];
+
+   color  lineColor = isBullish ? BullLineColor : BearLineColor;
+
+   // Horizontal Line (trend line as horizontal) create කිරීම
+   if(ObjectCreate(0, lineName, OBJ_TREND, 0, timeStart, linePrice, timeEnd, linePrice))
+     {
+      ObjectSetInteger(0, lineName, OBJPROP_COLOR,     lineColor);
+      ObjectSetInteger(0, lineName, OBJPROP_WIDTH,     LineWidth);
+      ObjectSetInteger(0, lineName, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, lineName, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, lineName, OBJPROP_STYLE,     STYLE_SOLID);
+      ObjectSetInteger(0, lineName, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, lineName, OBJPROP_HIDDEN,    true);
+     }
+  }
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double   &open[],
+                const double   &high[],
+                const double   &low[],
+                const double   &close[],
+                const long     &tick_volume[],
+                const long     &volume[],
+                const int      &spread[])
+  {
+   if(rates_total < 5) return(0);
+
+   // Full recalc වෙලාවේ lines සහ buffers සුද්ද කිරීම
+   if(prev_calculated <= 0)
+     {
+      ObjectsDeleteAll(0, "SMC_PB_Line_");
+      lineCount = 0;
+      for(int i = 0; i < rates_total; i++)
+         BullishPB_Buffer[i] = BearishPB_Buffer[i] = 0.0;
+     }
+
+   // State Variables
+   double bullHighest      = high[0];
+   double bullLowOfHighest = low[0];
+   bool   waitBull         = false;
+
+   double bearLowest       = low[0];
+   double bearHighOfLowest = high[0];
+   bool   waitBear         = false;
+
+   int    motherBarIndex   = 0;
+
+   int limit = (prev_calculated <= 0) ? 1 : prev_calculated - 1;
+
+   //--- Main Loop
+   for(int i = limit; i < rates_total; i++)
+     {
+      BullishPB_Buffer[i] = 0.0;
+      BearishPB_Buffer[i] = 0.0;
+
+      //--- Inside Bar (Mother Bar) Check
+      if(i > 0)
+        {
+         if(high[i] <= high[motherBarIndex] && low[i] >= low[motherBarIndex])
+            continue;
+         motherBarIndex = i;
+        }
+
+      //=== BULLISH PULLBACK ===
+      if(high[i] > bullHighest)
+        {
+         bullHighest      = high[i];
+         bullLowOfHighest = low[i];
+         waitBull         = true;
+        }
+
+      bool bullTriggered = false;
+      if(waitBull && close[i] < bullLowOfHighest)
+        {
+         // Arrow
+         BullishPB_Buffer[i] = low[i] - (10 * _Point);
+         waitBull      = false;
+         bullTriggered = true;
+
+         // ✅ Bullish Pullback Line අඳිනවා
+         DrawPullbackLine(time, high, low, i, rates_total, true);
+
+         // Bearish tracking reset
+         bearLowest       = low[i];
+         bearHighOfLowest = high[i];
+         waitBear         = true;
+        }
+
+      //=== BEARISH PULLBACK ===
+      if(low[i] < bearLowest)
+        {
+         bearLowest       = low[i];
+         bearHighOfLowest = high[i];
+         waitBear         = true;
+        }
+
+      if(!bullTriggered && waitBear && close[i] > bearHighOfLowest)
+        {
+         // Arrow
+         BearishPB_Buffer[i] = high[i] + (10 * _Point);
+         waitBear = false;
+
+         // ✅ Bearish Pullback Line අඳිනවා
+         DrawPullbackLine(time, high, low, i, rates_total, false);
+
+         // Bullish tracking reset
+         bullHighest      = high[i];
+         bullLowOfHighest = low[i];
+         waitBull         = true;
+        }
+     }
+
+   ChartRedraw(0);
+   return(rates_total);
+  }
+//+------------------------------------------------------------------+
